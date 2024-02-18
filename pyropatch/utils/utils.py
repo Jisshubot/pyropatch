@@ -1,8 +1,9 @@
+from pyrogram.file_id import FileId, FileType, PHOTO_TYPES, DOCUMENT_TYPES
 from pyrogram.filters import AndFilter, OrFilter, InvertFilter
 from pyrogram.errors import FloodWait
 from pyrogram.types import InlineKeyboardMarkup
+from pyrogram import raw
 from asyncio import sleep
-
 
 def patch(obj):
     def is_patchable(item):
@@ -55,7 +56,7 @@ async def handle_flood_wait(func, *args, **kwargs):
     try:
         return await func(*args, **kwargs)
     except FloodWait as time:
-        await sleep(time.value)
+        await sleep(time.x)
         return await handle_flood_wait(func, *args, **kwargs)
 
 
@@ -67,3 +68,54 @@ async def check_cbd(buttons: InlineKeyboardMarkup):
             if button.callback_data:
                 return True
     return False
+
+
+# https://github.com/subinps/pyrogram/tree/inline-m/pyrogram/utils.py#81-113
+def get_input_file_from_file_id(
+    file_id: str,
+    expected_file_type: FileType = None):
+    try:
+        decoded = FileId.decode(file_id)
+    except Exception:
+        raise ValueError(f'Failed to decode "{file_id}". The value does not represent an existing local file, '
+                         f'HTTP URL, or valid file id.')
+
+    file_type = decoded.file_type
+
+    if expected_file_type is not None and file_type != expected_file_type:
+        raise ValueError(f'Expected: "{expected_file_type}", got "{file_type}" file_id instead')
+
+    if file_type in (FileType.THUMBNAIL, FileType.CHAT_PHOTO):
+        raise ValueError(f"This file_id can only be used for download: {file_id}")
+
+    if file_type in PHOTO_TYPES:
+        return raw.types.InputPhoto(
+            id=decoded.media_id,
+            access_hash=decoded.access_hash,
+            file_reference=decoded.file_reference
+        )
+
+    if file_type in DOCUMENT_TYPES:
+        return raw.types.InputDocument(
+            id=decoded.media_id,
+            access_hash=decoded.access_hash,
+            file_reference=decoded.file_reference
+        )
+
+    raise ValueError(f"Unknown file id: {file_id}")
+
+
+def unpack_new_file_id(new_file_id):
+    """Return file_id, file_ref"""
+    decoded = FileId.decode(new_file_id)
+    file_id = encode_file_id(
+        pack(
+            "  <  iiqq",
+            int(decoded.file_type),
+            decoded.dc_id,
+            decoded.media_id,
+            decoded.access_hash
+        )
+    )
+    file_ref = encode_file_ref(decoded.file_reference)
+    return file_id, file_ref
