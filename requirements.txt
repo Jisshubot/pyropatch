@@ -1,2 +1,2 @@
-pyrogram==2.0.16
+pyrogram==2.0.85
 asyncio~=3.4.3
